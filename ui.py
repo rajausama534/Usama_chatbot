@@ -4020,132 +4020,167 @@ class MainWindow(QMainWindow):
         self._clock_lbl.setText(time.strftime("%H:%M:%S"))
         self._date_lbl.setText(time.strftime("%a %d %b %Y"))
 
+    def _run_dashboard_command(self, text: str) -> None:
+        """Route a Command Center button through the same path as a typed command."""
+        text = str(text or "").strip()
+        if not text:
+            return
+        self._log.append_log(f"You: {text}")
+        if self.on_text_command:
+            threading.Thread(target=self.on_text_command, args=(text,), daemon=True).start()
+
     def _build_left_panel(self) -> QWidget:
+        # Reference-inspired Command Center navigation. Every item remains a real
+        # command, not a decorative label.
         w = QWidget()
-        w.setFixedWidth(_LEFT_W)
+        w.setFixedWidth(198)
         w.setStyleSheet(f"background: {C.DARK}; border-right: 1px solid {C.BORDER};")
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 10, 8, 10)
-        lay.setSpacing(6)
+        lay.setContentsMargins(10, 12, 10, 10)
+        lay.setSpacing(5)
 
-        hdr = QLabel("◈ SYS MONITOR")
+        brand = QLabel(f"◉  {self._assistant_name.upper()}\n   COMMAND CENTER")
+        brand.setFont(QFont(_UI_FONT, 11, QFont.Weight.Bold))
+        brand.setStyleSheet(f"color: {C.PRI}; background: transparent; padding: 4px 2px 10px 2px;")
+        lay.addWidget(brand)
+
+        def nav(label: str, command: str, active: bool = False):
+            b = QPushButton(label)
+            b.setFixedHeight(33)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setFont(QFont(_UI_FONT, 8, QFont.Weight.Bold if active else QFont.Weight.Normal))
+            bg = C.PRI_GHO if active else "transparent"
+            col = C.PRI if active else C.TEXT_MED
+            border = C.BORDER_B if active else "transparent"
+            b.setStyleSheet(f"""
+                QPushButton {{
+                    text-align: left; padding: 0 10px;
+                    background: {bg}; color: {col};
+                    border: 1px solid {border}; border-radius: 8px;
+                }}
+                QPushButton:hover {{
+                    color: {C.WHITE}; background: {C.PANEL2};
+                    border: 1px solid {C.BORDER_B};
+                }}
+            """)
+            b.clicked.connect(lambda _=False, t=command: self._run_dashboard_command(t))
+            lay.addWidget(b)
+            return b
+
+        nav("▦   Command Center", "Show my operator dashboard", True)
+        nav("◈   AI Core", "Show AI core and system status")
+        nav("⌘   Tasks", "Show my current tasks and pending actions")
+        nav("◷   Calendar", "Show my calendar and upcoming schedule")
+        nav("◉   Memory", "Show recent action memory and important remembered context")
+        nav("▤   Conversations", "Show recent conversation context")
+        nav("▧   Knowledge Base", "Show available knowledge and files")
+        nav("⌁   Tools & Skills", "Show all available tools and capabilities")
+        nav("⟲   Workflows", "Show available workflows and automation options")
+
+        lay.addSpacing(8)
+        hdr = QLabel("VOICE + SYSTEM")
         hdr.setFont(QFont(_UI_FONT, 7, QFont.Weight.Bold))
-        hdr.setStyleSheet(f"color: {C.PRI}; background: transparent; "
-                          f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 4px;")
+        hdr.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent; padding: 4px;")
         lay.addWidget(hdr)
-        lay.addSpacing(2)
 
         self._bar_cpu = MetricBar("CPU", C.PRI)
-        self._bar_mem = MetricBar("MEM", C.ACC2)
+        self._bar_mem = MetricBar("RAM", C.ACC2)
         self._bar_net = MetricBar("NET", C.GREEN)
         self._bar_gpu = MetricBar("GPU", C.ACC)
-        self._bar_tmp = MetricBar("TMP", "#ff6688")
-
-        for bar in [self._bar_cpu, self._bar_mem, self._bar_net,
-                    self._bar_gpu, self._bar_tmp]:
+        self._bar_tmp = MetricBar("TEMP", "#ff6688")
+        for bar in [self._bar_cpu, self._bar_mem, self._bar_net]:
             lay.addWidget(bar)
 
-        lay.addSpacing(4)
-
-        info_panel = QWidget()
-        info_panel.setStyleSheet(
-            f"background: {C.PANEL2}; border: 1px solid {C.BORDER}; border-radius: 8px;"
-        )
-        ip_lay = QVBoxLayout(info_panel)
-        ip_lay.setContentsMargins(6, 5, 6, 5)
-        ip_lay.setSpacing(3)
-
         self._uptime_lbl = QLabel("UP  --:--")
-        self._uptime_lbl.setFont(QFont(_UI_FONT, 8, QFont.Weight.Bold))
-        self._uptime_lbl.setStyleSheet(f"color: {C.GREEN}; background: transparent; border: none;")
-        ip_lay.addWidget(self._uptime_lbl)
-
         self._proc_lbl = QLabel("PROC  --")
-        self._proc_lbl.setFont(QFont(_UI_FONT, 8))
-        self._proc_lbl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent; border: none;")
-        ip_lay.addWidget(self._proc_lbl)
-
-        os_name = {"Windows": "WIN", "Darwin": "macOS", "Linux": "LINUX"}.get(_OS, _OS.upper())
-        os_lbl = QLabel(f"OS  {os_name}")
-        os_lbl.setFont(QFont(_UI_FONT, 8))
-        os_lbl.setStyleSheet(f"color: {C.ACC2}; background: transparent; border: none;")
-        ip_lay.addWidget(os_lbl)
-
-        lay.addWidget(info_panel)
-        lay.addSpacing(4)
-
-        lay.addStretch()
-
-        for txt, col in [
-            ("AI CORE\nACTIVE",  C.GREEN),
-            ("SEC\nCLEARED",     C.PRI),
-            ("PROTOCOL\n" + APP_PROTOCOL,   C.TEXT_DIM),
-        ]:
-            lbl = QLabel(txt)
-            lbl.setFont(QFont(_UI_FONT, 7, QFont.Weight.Bold))
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setStyleSheet(
-                f"color: {col}; background: {C.PANEL2};"
-                f"border: 1px solid {C.BORDER_A}; border-radius: 8px; padding: 4px;"
-            )
+        for lbl in (self._uptime_lbl, self._proc_lbl):
+            lbl.setFont(QFont(_UI_FONT, 7))
+            lbl.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent; padding-left: 5px;")
             lay.addWidget(lbl)
 
+        lay.addStretch()
+        self._left_voice = QLabel("●  LISTENING")
+        self._left_voice.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._left_voice.setFont(QFont(_UI_FONT, 8, QFont.Weight.Bold))
+        self._left_voice.setStyleSheet(
+            f"color: {C.GREEN}; background: {C.PANEL2}; border: 1px solid {C.BORDER}; "
+            "border-radius: 10px; padding: 8px;"
+        )
+        lay.addWidget(self._left_voice)
         return w
+
     def _build_right_panel(self) -> QWidget:
         w = QWidget()
-        w.setFixedWidth(_RIGHT_W)
+        w.setFixedWidth(365)
         w.setStyleSheet(f"background: {C.DARK}; border-left: 1px solid {C.BORDER};")
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setContentsMargins(9, 9, 9, 9)
         lay.setSpacing(6)
 
-        def _sec(txt):
-            l = QLabel(f"▸ {txt}")
-            l.setFont(QFont(_UI_FONT, 7, QFont.Weight.Bold))
-            l.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
-            return l
+        def sec(txt, status=""):
+            row = QHBoxLayout()
+            l = QLabel(txt)
+            l.setFont(QFont(_UI_FONT, 8, QFont.Weight.Bold))
+            l.setStyleSheet(f"color: {C.PRI}; background: transparent;")
+            row.addWidget(l)
+            row.addStretch()
+            if status:
+                s = QLabel(status)
+                s.setFont(QFont(_UI_FONT, 7, QFont.Weight.Bold))
+                s.setStyleSheet(f"color: {C.GREEN}; background: {C.PRI_GHO}; border-radius: 6px; padding: 2px 6px;")
+                row.addWidget(s)
+            lay.addLayout(row)
 
-        lay.addWidget(_sec("ACTIVITY LOG"))
+        sec("LIVE INTELLIGENCE FEED", "LIVE")
         self._log = LogWidget()
-        lay.addWidget(self._log, stretch=1)
+        self._log.setMinimumHeight(170)
+        lay.addWidget(self._log, stretch=2)
 
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
-        lay.addWidget(sep)
+        sec("QUICK COMMANDS")
+        grid = QHBoxLayout()
+        left = QVBoxLayout(); right = QVBoxLayout()
+        def qb(label, cmd):
+            b=QPushButton(label)
+            b.setFixedHeight(30)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setFont(QFont(_UI_FONT, 7, QFont.Weight.Bold))
+            b.setStyleSheet(f"""
+                QPushButton {{ text-align:left; padding:0 9px; color:{C.TEXT_MED};
+                background:{C.PANEL2}; border:1px solid {C.BORDER}; border-radius:8px; }}
+                QPushButton:hover {{ color:{C.PRI}; border-color:{C.BORDER_B}; }}
+            """)
+            b.clicked.connect(lambda _=False,t=cmd:self._run_dashboard_command(t))
+            return b
+        left.addWidget(qb("＋  New Task", "Start a new task"))
+        left.addWidget(qb("◷  Calendar", "Open my calendar"))
+        left.addWidget(qb("✉  Gmail", "Open Gmail and show important unread emails"))
+        right.addWidget(qb("▣  CRM", "Open my CRM"))
+        right.addWidget(qb("◉  Browser", "Show my open Chrome tabs"))
+        right.addWidget(qb("◎  Operator", "Show my operator dashboard"))
+        grid.addLayout(left); grid.addLayout(right)
+        lay.addLayout(grid)
 
-        lay.addWidget(_sec("FILE UPLOAD"))
+        sec("FILE / KNOWLEDGE INPUT")
         self._drop_zone = FileDropZone()
         self._drop_zone.file_selected.connect(self._on_file_selected)
         lay.addWidget(self._drop_zone)
-
-        self._file_hint = QLabel("No file loaded — drop or click above to upload")
+        self._file_hint = QLabel("Drop a file here or click to upload")
         self._file_hint.setFont(QFont(_UI_FONT, 7))
-        self._file_hint.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        self._file_hint.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
         self._file_hint.setWordWrap(True)
         lay.addWidget(self._file_hint)
 
-        sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
-        lay.addWidget(sep2)
-
-        lay.addWidget(_sec("COMMAND INPUT"))
+        sec("COMMAND INPUT")
         lay.addLayout(self._build_input_row())
 
-        self._interrupt_btn = QPushButton("✋  INTERRUPT  [ESC]")
-        self._interrupt_btn.setFixedHeight(34)
+        self._interrupt_btn = QPushButton("■  INTERRUPT  [ESC]")
+        self._interrupt_btn.setFixedHeight(32)
         self._interrupt_btn.setFont(QFont(_UI_FONT, 8, QFont.Weight.Bold))
         self._interrupt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._interrupt_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #140008; color: {C.MUTED_C};
-                border: 1px solid {C.MUTED_C}; border-radius: 8px;
-            }}
-            QPushButton:hover {{
-                background: #200010; border: 1px solid #ff6688;
-            }}
-            QPushButton:pressed {{
-                background: #300018;
-            }}
+            QPushButton {{ background:{C.PANEL2}; color:{C.MUTED_C};
+            border:1px solid {C.MUTED_C}; border-radius:8px; }}
+            QPushButton:hover {{ background:#1a0b10; color:{C.RED}; }}
         """)
         self._interrupt_btn.clicked.connect(self._do_interrupt)
         lay.addWidget(self._interrupt_btn)
@@ -4157,7 +4192,6 @@ class MainWindow(QMainWindow):
         self._mute_btn.clicked.connect(self._toggle_mute)
         self._style_mute_btn()
         lay.addWidget(self._mute_btn)
-
         return w
 
     def _build_quick_drawer(self) -> QWidget:
@@ -4897,7 +4931,7 @@ class MainWindow(QMainWindow):
 
         lay.addWidget(_fl("[F4] Mute  ·  [F11] Fullscreen"))
         lay.addStretch()
-        lay.addWidget(_fl("Usama", C.PRI_DIM))
+        lay.addWidget(_fl(f"{self._assistant_name.upper()}  •  SYSTEM OPTIMAL", C.PRI_DIM))
         return w
 
     def _on_file_selected(self, path: str):
