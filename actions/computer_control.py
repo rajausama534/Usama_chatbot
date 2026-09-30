@@ -516,7 +516,7 @@ def computer_control(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "computer_control",
-    "description": "Direct computer control: type, click, hotkeys, scroll, move mouse, screenshots, find elements on screen.",
+    "description": "Direct computer control. Typing, clicking, hotkeys, key presses, paste, field clearing, drag and AI screen-click require the user's on-screen confirmation before execution; read-only screen inspection can run directly.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
