@@ -301,6 +301,33 @@ def send_message(
         return ("There is already a confirmation waiting on screen. "
                 "Ask the user to approve or cancel it first.")
 
+    # WhatsApp: search recipient, open the chat and type the message FIRST.
+    # The single confirmation is only for the final Enter/send action.
+    if platform.lower().strip() in {"whatsapp", "wp", "wapp"}:
+        try:
+            from plugins import _whatsapp_core as wa
+            transport, why = wa.get()
+            if transport is None:
+                return f"WhatsApp driver unavailable: {why}. Message NOT sent."
+            prepared, failure = transport.prepare_message_to(receiver, message_text)
+            if not prepared:
+                return f"Could not prepare WhatsApp message for {receiver}: {failure}. Nothing was sent."
+
+            def _do_send():
+                sent, failure2 = transport.send_prepared()
+                if sent:
+                    return f"Message sent to {receiver} via WhatsApp."
+                return f"Message to {receiver} was NOT sent: {failure2}"
+
+            return confirm.request(
+                key=f"send_message:whatsapp:{receiver}",
+                title=f"Send WhatsApp message to {receiver}?",
+                detail=f"Message: {preview}",
+                run=_do_send,
+            )
+        except Exception as e:
+            return f"Could not prepare WhatsApp message: {e}. Nothing was sent."
+
     def _do_send():
         try:
             handler = _resolve_platform(platform)
@@ -310,20 +337,10 @@ def send_message(
 
     return confirm.request(
         key=f"send_message:{platform}:{receiver}",
-        title=f"Send message to {receiver}",
+        title=f"Send message to {receiver}?",
         detail=f"Platform: {platform}\nMessage: {preview}",
         run=_do_send,
     )
-
-    # "NOT sent" contains "sent". The old test read that as a success and put a
-    # tick next to a message that never went.
-    lowered = result.lower()
-    ok = "sent" in lowered and "not sent" not in lowered
-    print(f"[SendMessage] {'✅' if ok else '❌'} {result}")
-    if player:
-        player.write_log(f"[msg] {result}")
-
-    return result
 
 
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
