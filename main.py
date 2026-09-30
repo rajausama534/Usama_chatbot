@@ -1,5 +1,44 @@
 import platform as _platform
 import subprocess as _subprocess
+from pathlib import Path as _EarlyPath
+
+# ── Auto-update from the user's own GitHub repository ────────────────────────
+# Runs before local project modules are imported. It only accepts a clean
+# fast-forward from origin/main; it will never overwrite local edits.
+def _auto_update_from_github():
+    try:
+        root = _EarlyPath(__file__).resolve().parent
+        if not (root / ".git").exists():
+            return
+        fetch = _subprocess.run(
+            ["git", "-C", str(root), "fetch", "origin", "main", "--quiet"],
+            capture_output=True, text=True, timeout=20,
+        )
+        if fetch.returncode != 0:
+            print("[Updater] Could not check GitHub; starting current version.")
+            return
+        local = _subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        remote = _subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "origin/main"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        if not local or not remote or local == remote:
+            return
+        pull = _subprocess.run(
+            ["git", "-C", str(root), "pull", "--ff-only", "origin", "main"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if pull.returncode == 0:
+            print("[Updater] Updated Usama from GitHub.")
+        else:
+            print("[Updater] Update available but local changes prevented a safe fast-forward.")
+    except Exception as e:
+        print(f"[Updater] Skipped: {e}")
+
+_auto_update_from_github()
 
 # ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
 # This patches Popen itself, so no per-file flag is needed anywhere.
