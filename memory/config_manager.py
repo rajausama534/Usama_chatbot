@@ -141,8 +141,8 @@ def get_hud_style() -> str:
     with; anyone who preferred the older look can switch back in ⚙ and the
     choice survives a restart.
     """
-    v = str(load_api_keys().get("hud_style", "face")).strip().lower()
-    return v if v in HUD_STYLES else "face"
+    v = str(load_api_keys().get("hud_style", "core")).strip().lower()
+    return v if v in HUD_STYLES else "core"
 
 
 def save_hud_style(style: str) -> None:
