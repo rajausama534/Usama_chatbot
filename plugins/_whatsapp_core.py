@@ -42,7 +42,7 @@ def _front_app() -> str:
 
 
 class _MacWhatsApp:
-    def send_message_to(self, receiver: str, message: str):
+    def prepare_message_to(self, receiver: str, message: str):
         if platform.system() != "Darwin":
             return False, "macOS WhatsApp driver is only available on macOS"
         if pyautogui is None:
@@ -78,15 +78,30 @@ class _MacWhatsApp:
         if "whatsapp" not in _front_app().lower():
             return False, "WhatsApp lost focus before the conversation opened"
 
-        # Type only after the recipient search/open step is complete.
+        # Type only after the recipient search/open step is complete. Do NOT send yet.
         _paste(message)
         time.sleep(0.25)
+
+        if "whatsapp" not in _front_app().lower():
+            return False, "WhatsApp lost focus while preparing the message"
+        return True, ""
+
+    def send_prepared(self):
+        if platform.system() != "Darwin" or pyautogui is None:
+            return False, "WhatsApp send control is unavailable"
+        if "whatsapp" not in _front_app().lower():
+            return False, "WhatsApp is not the active application"
         pyautogui.press("enter")
         time.sleep(0.5)
-
         if "whatsapp" not in _front_app().lower():
             return False, "WhatsApp lost focus while sending"
         return True, ""
+
+    def send_message_to(self, receiver: str, message: str):
+        ok, why = self.prepare_message_to(receiver, message)
+        if not ok:
+            return False, why
+        return self.send_prepared()
 
 
 _driver = _MacWhatsApp()
