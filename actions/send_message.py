@@ -4,6 +4,8 @@ import sys
 import time
 from pathlib import Path
 
+from core import confirm
+
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
@@ -174,18 +176,18 @@ def _send_whatsapp(receiver: str, message: str) -> str:
     try:
         from plugins import _whatsapp_core as wa
     except Exception as e:
-        print(f"[SendMessage] WhatsApp driver unavailable ({e}) — typing blind.")
-        return _desktop_send("WhatsApp", receiver, message)
+        return (f"WhatsApp driver unavailable ({e}). Message NOT sent. "
+                f"Blind keyboard fallback is disabled for safety.")
 
     try:
         transport, why = wa.get()
     except Exception as e:
-        print(f"[SendMessage] WhatsApp driver failed to start ({e}) — typing blind.")
-        return _desktop_send("WhatsApp", receiver, message)
+        return (f"WhatsApp driver failed to start ({e}). Message NOT sent. "
+                f"Blind keyboard fallback is disabled for safety.")
 
     if transport is None:
-        print(f"[SendMessage] {why} — typing blind.")
-        return _desktop_send("WhatsApp", receiver, message)
+        return (f"WhatsApp driver unavailable: {why}. Message NOT sent. "
+                f"Blind keyboard fallback is disabled for safety.")
 
     sent, failure = transport.send_message_to(receiver, message)
     if sent:
@@ -295,11 +297,23 @@ def send_message(
     if player:
         player.write_log(f"[msg] {platform} → {receiver}")
 
-    try:
-        handler = _resolve_platform(platform)
-        result  = handler(receiver, message_text)
-    except Exception as e:
-        result = f"Could not send message: {e}"
+    if confirm.pending_title():
+        return ("There is already a confirmation waiting on screen. "
+                "Ask the user to approve or cancel it first.")
+
+    def _do_send():
+        try:
+            handler = _resolve_platform(platform)
+            return handler(receiver, message_text)
+        except Exception as e:
+            return f"Could not send message: {e}"
+
+    return confirm.request(
+        key=f"send_message:{platform}:{receiver}",
+        title=f"Send message to {receiver}",
+        detail=f"Platform: {platform}\nMessage: {preview}",
+        run=_do_send,
+    )
 
     # "NOT sent" contains "sent". The old test read that as a success and put a
     # tick next to a message that never went.
@@ -316,8 +330,8 @@ def send_message(
 TOOL = {
     "name": "send_message",
     "description": (
-        "Sends a text message via WhatsApp, Telegram, or another messaging "
-        "platform. Write 'message_text' in the USER'S OWN LANGUAGE, exactly "
+        "Prepares a text message via WhatsApp, Telegram, or another messaging "
+        "platform. EVERY send requires the user's on-screen confirmation first. Write 'message_text' in the USER'S OWN LANGUAGE, exactly "
         "what they asked to be said. If the result says the message was NOT "
         "sent, repeat that plainly along with the reason it gives — never "
         "tell the user a message was sent unless the result said it was."
