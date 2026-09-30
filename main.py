@@ -117,6 +117,7 @@ from core.plugin_loader        import discover_plugins
 from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
+from core                      import operator_state
 from core.action_loader        import discover_actions
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
@@ -1169,6 +1170,15 @@ class UsamaLive:
         print(f"[Usama] 🔧 {name}  {args}")
         self.ui.set_state("THINKING")
 
+        _allowed, _why = operator_state.allow_tool(name, args)
+        if not _allowed:
+            operator_state.record_action(name, args, _why)
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(
+                id=fc.id, name=name,
+                response={"result": _why}
+            )
 
         if name == "save_memory":
             category = args.get("category", "notes")
@@ -1314,6 +1324,8 @@ class UsamaLive:
             self.ui.set_state("LISTENING")
 
         print(f"[Usama] 📤 {name} → {str(result)[:80]}")
+
+        operator_state.record_action(name, args, str(result))
 
         # A tool that declared itself NON_BLOCKING also says when its answer may
         # re-enter the conversation. Without this the model finishes whatever it
