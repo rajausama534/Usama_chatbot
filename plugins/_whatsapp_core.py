@@ -41,6 +41,55 @@ def _front_app() -> str:
     return (r.stdout or "").strip()
 
 
+def _normalise_name(text: str) -> str:
+    return " ".join((text or "").casefold().split())
+
+
+def _visible_whatsapp_text() -> str:
+    """Best-effort Accessibility read of visible WhatsApp UI text.
+
+    This deliberately fails closed: if macOS Accessibility cannot expose the
+    chat title, the driver will refuse to type rather than guess.
+    """
+    script = r'''
+tell application "System Events"
+    if not (exists process "WhatsApp") then return ""
+    tell process "WhatsApp"
+        set frontmost to true
+        if not (exists window 1) then return ""
+        set outText to ""
+        try
+            set elems to entire contents of window 1
+            repeat with e in elems
+                try
+                    if role of e is "AXStaticText" then
+                        set v to value of e as text
+                        if v is not "" then set outText to outText & v & linefeed
+                    end if
+                end try
+            end repeat
+        end try
+        return outText
+    end tell
+end tell
+'''
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=8)
+    if r.returncode != 0:
+        return ""
+    return (r.stdout or "").strip()
+
+
+def _contact_visible_exact(receiver: str) -> bool:
+    want = _normalise_name(receiver)
+    if not want:
+        return False
+    text = _visible_whatsapp_text()
+    if not text:
+        return False
+    lines = [_normalise_name(x) for x in text.splitlines() if x.strip()]
+    return want in lines
+
+
 class _MacWhatsApp:
     def prepare_message_to(self, receiver: str, message: str):
         if platform.system() != "Darwin":
@@ -74,11 +123,21 @@ class _MacWhatsApp:
         time.sleep(0.2)
         pyautogui.press("enter")
         time.sleep(1.0)
+        pyautogui.press("esc")  # close the search surface before verification
+        time.sleep(0.35)
 
         if "whatsapp" not in _front_app().lower():
             return False, "WhatsApp lost focus before the conversation opened"
 
-        # Type only after the recipient search/open step is complete. Do NOT send yet.
+        # Fail closed. Never type into a chat unless the requested contact name
+        # is actually visible in WhatsApp's current conversation UI.
+        if not _contact_visible_exact(receiver):
+            return False, (
+                f"Could not verify that the open chat is exactly '{receiver}'. "
+                "Message was not typed or sent."
+            )
+
+        # Type only after exact recipient verification. Do NOT send yet.
         _paste(message)
         time.sleep(0.25)
 
