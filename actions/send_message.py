@@ -358,7 +358,7 @@ TOOL = {
         "properties": {
             "receiver": {
                 "type": "STRING",
-                "description": "Recipient contact name"
+                "description": "Exact recipient contact/chat name. Never put generic phrases like 'pinned chat', 'pin chat', 'last chat', or 'top chat' here; resolve those to the actual visible chat name first."
             },
             "message_text": {
                 "type": "STRING",
