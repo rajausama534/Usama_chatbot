@@ -2205,12 +2205,20 @@ class UsamaLive:
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())
 
-                    # Morning briefing — fires once per process launch (if enabled).
-                    # Skipped in wake-word mode: it comes up asleep, and a briefing
-                    # would mean talking while "asleep".
-                    if not self._briefing_sent and get_brief_enabled() and self._awake:
+                    # Startup greeting — once per process launch. No news, weather,
+                    # headlines or briefing. In wake-word mode Usama stays silent
+                    # until explicitly woken.
+                    if not self._briefing_sent and self._awake:
                         self._briefing_sent = True
-                        tg.create_task(self._send_startup_briefing())
+                        await self.session.send_client_content(
+                            turns={"role": "user", "parts": [{"text": (
+                                "[STARTUP_GREETING] Say exactly one short greeting only. "
+                                "Use either 'Hello Mr. Usama.' or 'Hello bhai, I am Usama.' "
+                                "Do not mention news, weather, headlines, updates, reminders, "
+                                "system status, or anything else."
+                            )}]},
+                            turn_complete=True,
+                        )
 
             except KeyboardInterrupt:
                 raise
