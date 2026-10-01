@@ -120,11 +120,23 @@ def save_memory(memory: dict) -> None:
         return
     memory = _trim_to_limit(memory)
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Preserve the previous file until the new JSON is fully written.
+    import os
+    import shutil
+    tmp_path = MEMORY_PATH.with_suffix(".json.tmp")
+    backup_path = MEMORY_PATH.with_suffix(".json.bak")
+    payload = json.dumps(memory, indent=2, ensure_ascii=False)
     with _lock:
-        MEMORY_PATH.write_text(
-            json.dumps(memory, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        try:
+            with tmp_path.open("w", encoding="utf-8") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if MEMORY_PATH.exists():
+                shutil.copy2(MEMORY_PATH, backup_path)
+            os.replace(tmp_path, MEMORY_PATH)
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
 
 def _truncate_value(val: str) -> str:
