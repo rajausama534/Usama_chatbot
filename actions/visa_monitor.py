@@ -410,11 +410,24 @@ def visa_monitor(parameters=None, player=None, **kwargs) -> str:
         if not ok:
             return f"Visa monitor config was saved, but the 5-minute background job could not be installed: {why}"
         first = check_once(notify=False)
-        if first.get("status") == "read_error":
-            return first.get("message", "Visa monitor installed but page reading needs attention.")
+        first_status = first.get("status", "unknown")
+        if first_status not in ("ok", "earlier_slot"):
+            return (
+                "Visa monitor scheduled every 5 minutes, but the first live check "
+                "has NOT succeeded: " + first.get("message", first_status) +
+                " Keep the appointment page logged in and resolve this before "
+                "relying on alerts."
+            )
+        if first_status == "ok" and not first.get("earliest"):
+            return (
+                "Visa monitor scheduled every 5 minutes. The page was readable, "
+                "but no available appointment dates were confirmed. "
+                "Do not rely on slot alerts until a live availability check succeeds."
+            )
         return (
-            "US visa monitor is active every 5 minutes using the existing logged-in Chrome tab. "
-            "It will alert on an earlier slot, login expiry, or CAPTCHA/security verification."
+            "US visa monitor scheduled every 5 minutes using the existing Chrome tab. "
+            "First check: " + first_status + ". Earliest detected: " +
+            str(first.get("earliest") or "none") + "."
         )
 
     if action == "stop":
