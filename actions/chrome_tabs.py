@@ -87,8 +87,8 @@ end tell
 def _open(query: str) -> str:
     q = (query or "").strip()
     if not q:
-        return "Please specify a website or URL."
-    if "://" not in q:
+        q = "chrome://newtab/"
+    if "://" not in q and not q.startswith("chrome:"):
         if "." not in q:
             q = "https://www.google.com/search?q=" + q.replace(" ", "+")
         else:
@@ -98,8 +98,9 @@ def _open(query: str) -> str:
 tell application "Google Chrome"
     activate
     if not running then
-        open location "{safe}"
-        return "OPENED"
+        activate
+        delay 0.3
+        if not (exists front window) then make new window
     end if
     tell front window
         make new tab with properties {{URL:"{safe}"}}
