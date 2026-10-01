@@ -90,6 +90,47 @@ def _contact_visible_exact(receiver: str) -> bool:
     return want in lines
 
 
+def _press_visible_label(label: str) -> bool:
+    """Press a visible WhatsApp accessibility element by exact label."""
+    safe = (label or "").replace("\\", "\\\\").replace('"', '\\"')
+    script = f'''
+tell application "System Events"
+    if not (exists process "WhatsApp") then return "NO"
+    tell process "WhatsApp"
+        set frontmost to true
+        if not (exists window 1) then return "NO"
+        try
+            set elems to entire contents of window 1
+            repeat with e in elems
+                try
+                    set n to ""
+                    try
+                        set n to name of e as text
+                    end try
+                    if n is "" then
+                        try
+                            set n to value of e as text
+                        end try
+                    end if
+                    ignoring case
+                        if n is "{safe}" then
+                            try
+                                perform action "AXPress" of e
+                                return "YES"
+                            end try
+                        end if
+                    end ignoring
+                end try
+            end repeat
+        end try
+        return "NO"
+    end tell
+end tell
+'''
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=8)
+    return r.returncode == 0 and (r.stdout or "").strip() == "YES"
+
+
 class _MacWhatsApp:
     def prepare_message_to(self, receiver: str, message: str):
         if platform.system() != "Darwin":
@@ -116,13 +157,30 @@ class _MacWhatsApp:
         pyautogui.hotkey("command", "a")
         pyautogui.press("delete")
         _paste(receiver)
-        time.sleep(1.5)
+        time.sleep(1.2)
 
-        # Open the first matching conversation.
+        # If the global results do not expose the exact chat, try Archived and
+        # search again there. This is a fallback, not a blind click.
+        if not _contact_visible_exact(receiver):
+            pyautogui.press("esc")
+            time.sleep(0.25)
+            if _press_visible_label("Archived"):
+                time.sleep(0.6)
+                pyautogui.hotkey("command", "f")
+                time.sleep(0.35)
+                pyautogui.hotkey("command", "a")
+                pyautogui.press("delete")
+                _paste(receiver)
+                time.sleep(1.0)
+
+        if not _contact_visible_exact(receiver):
+            return False, f"Could not find an exact WhatsApp chat named '{receiver}'"
+
+        # Open the matching conversation only after its name is visible.
         pyautogui.press("down")
-        time.sleep(0.2)
+        time.sleep(0.15)
         pyautogui.press("enter")
-        time.sleep(1.0)
+        time.sleep(0.7)
         pyautogui.press("esc")  # close the search surface before verification
         time.sleep(0.35)
 
