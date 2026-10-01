@@ -282,30 +282,50 @@ def _scrape_trending(region: str = "TR", max_results: int = 8) -> list[dict]:
         return []
 
 def _handle_play(parameters: dict, player) -> str:
-    query = parameters.get("query", "").strip()
+    query = str(parameters.get("query", "") or "").strip()
     if not query:
-        return "Please tell me what you'd like to watch, sir."
+        return "Please tell me what you'd like to watch."
 
     if player:
-        player.write_log(f"[YouTube] Searching: {query}")
+        player.write_log(f"[YouTube] Resolving video: {query}")
 
-    print(f"[YouTube] 🔍 Scraping first non-Shorts video for: {query}")
+    # Prefer a real video URL, not a Google/YouTube search-results page.
+    video_url = ""
+    is_latest = any(term in query.lower() for term in ("latest", "newest", "most recent"))
+    if is_latest:
+        # YouTube's date-sorted video search is a better starting point for
+        # requests such as "Ducky Bhai's latest video".
+        try:
+            import yt_dlp
+            with yt_dlp.YoutubeDL({
+                "quiet": True, "no_warnings": True,
+                "skip_download": True, "extract_flat": True,
+                "noplaylist": True, "socket_timeout": 8,
+            }) as ydl:
+                info = ydl.extract_info(f"ytsearchdate1:{query}", download=False)
+            entries = (info or {}).get("entries") or []
+            if entries:
+                item = entries[0]
+                identifier = item.get("id", "")
+                if re.fullmatch(r"[A-Za-z0-9_-]{11}", identifier):
+                    video_url = f"https://www.youtube.com/watch?v={identifier}"
+        except Exception as e:
+            print(f"[YouTube] Date-sorted lookup unavailable: {e}")
 
-    video_url = _scrape_first_video_url(query)
-
+    if not video_url:
+        video_url = _scrape_first_video_url(query)
     if video_url:
-        print(f"[YouTube] ▶️ Opening: {video_url}")
         _open_url(video_url)
-        return f"Playing: {query}"
+        return f"Opened YouTube video: {video_url}. Playback depends on browser autoplay settings."
 
-    print(f"[YouTube] ⚠️ Scrape failed, opening filtered search page")
+    # A search page is a fallback, not successful playback.
     fallback_url = (
         f"https://www.youtube.com/results"
         f"?search_query={quote_plus(query)}"
         f"&sp={_YT_VIDEO_FILTER}"
     )
     _open_url(fallback_url)
-    return f"Opened YouTube search for: {query} (manual selection required)"
+    return f"Could not resolve a direct video. Opened YouTube results for: {query}; playback has not started."
 
 
 def _handle_summarize(parameters: dict, player, speak) -> str:
