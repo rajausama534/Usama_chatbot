@@ -119,6 +119,7 @@ from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core                      import operator_state
+from memory.conversation_journal import record_turn, recent_context
 from core.action_loader        import discover_actions
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
@@ -579,7 +580,7 @@ def _keep_context_of(exc: BaseException) -> bool:
 class UsamaLive:
     def __init__(self, ui: UsamaUI):
         self.ui             = ui
-        self._asst_name     = "JARVI    S"   # updated each session from config
+        self._asst_name     = "Usama"   # updated each session from config
         self.session              = None
         self.audio_in_queue       = None
         self.out_queue            = None
@@ -1013,6 +1014,7 @@ class UsamaLive:
         memory     = load_memory()
         mem_str     = format_memory_for_prompt(memory)
         session_ctx = session_context_for_prompt()
+        turn_ctx    = recent_context()
         sys_prompt  = _load_system_prompt()
 
         now      = datetime.now()
@@ -1067,6 +1069,8 @@ class UsamaLive:
             parts.append(mem_str)
         if session_ctx:
             parts.append(session_ctx)
+        if turn_ctx:
+            parts.append(turn_ctx)
         parts.append(sys_prompt)
 
         cfg = dict(
@@ -1602,6 +1606,10 @@ class UsamaLive:
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
+                                try:
+                                    record_turn("user", full_in)
+                                except OSError as exc:
+                                    print(f"[Memory] Conversation journal unavailable: {exc}")
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",
@@ -1621,6 +1629,10 @@ class UsamaLive:
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
+                                try:
+                                    record_turn("assistant", full_out)
+                                except OSError as exc:
+                                    print(f"[Memory] Conversation journal unavailable: {exc}")
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "usama",
@@ -2221,7 +2233,7 @@ class UsamaLive:
                         # Say it plainly: the difference between "it reconnected"
                         # and "it reconnected and still knows what we were doing"
                         # is the whole point, and it is invisible otherwise.
-                        self.ui.write_log("SYS: Reconnected — conversation restored.")
+                        self.ui.write_log("SYS: Reconnected — previous live session requested; local conversation history retained.")
 
                     # Wake word: if enabled, come up ASLEEP (mic gated, silent)
                     # until the user says "Hey Usama" or taps wake in the UI.
@@ -2301,9 +2313,9 @@ class UsamaLive:
                     or "NOT_FOUND" in str(e)
                 ):
                     print("[Usama] 🔗 Resumption handle rejected — starting a fresh session")
-                    self.ui.write_log("SYS: Could not restore the conversation — starting fresh.")
+                    self.ui.write_log("SYS: Live session expired — reconnecting with saved local conversation history.")
                     self._resume_handle = None
-                    self._conn_backoff = 0
+                    self._conn_backoff = 1
                     continue
 
                 err_str = str(e)
