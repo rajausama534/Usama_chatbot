@@ -33,6 +33,70 @@ def _scripts_dir() -> Path:
     return d
 
 
+def _registry_path() -> Path:
+    return _scripts_dir() / "registry.json"
+
+
+def _load_registry() -> list[dict]:
+    try:
+        data = json.loads(_registry_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_registry(rows: list[dict]) -> None:
+    p = _registry_path()
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(rows[-500:], indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(p)
+
+
+def _record_reminder(task_name: str, target_dt: datetime, message: str, job_id: str) -> None:
+    rows = [r for r in _load_registry() if r.get("task_name") != task_name]
+    rows.append({
+        "task_name": task_name,
+        "when": target_dt.strftime("%Y-%m-%d %H:%M"),
+        "message": message,
+        "job_id": job_id,
+        "status": "scheduled",
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    _save_registry(rows)
+
+
+def pending_reminders() -> list[dict]:
+    now = datetime.now()
+    out = []
+    changed = False
+    rows = _load_registry()
+    for row in rows:
+        if row.get("status") != "scheduled":
+            continue
+        try:
+            when = datetime.strptime(str(row.get("when", "")), "%Y-%m-%d %H:%M")
+        except Exception:
+            continue
+        if when < now:
+            row["status"] = "past"
+            changed = True
+            continue
+        out.append(row)
+    if changed:
+        _save_registry(rows)
+    return sorted(out, key=lambda r: r.get("when", ""))
+
+
+def pending_reminders_for_prompt(limit: int = 20) -> str:
+    rows = pending_reminders()[:max(1, int(limit or 20))]
+    if not rows:
+        return ""
+    lines = ["[PENDING REMINDERS / TASKS — survive app and laptop restarts]"]
+    for row in rows:
+        lines.append(f"- {row.get('when')}: {row.get('message')}")
+    return "\n".join(lines) + "\n"
+
+
 def _sanitise(text: str, max_len: int = 200) -> str:
     return (
         text.replace("\\", "")
@@ -291,6 +355,13 @@ def reminder(
     session_memory=None,
 ) -> str:
 
+    action = str(parameters.get("action", "set")).strip().lower()
+    if action == "list":
+        rows = pending_reminders()
+        if not rows:
+            return "No pending reminders."
+        return "\n".join(f"{r.get('when')} — {r.get('message')}" for r in rows)
+
     date_str = parameters.get("date", "").strip()
     time_str = parameters.get("time", "").strip()
     message  = parameters.get("message", "Reminder").strip()
@@ -330,6 +401,8 @@ def reminder(
     if not job_id:
         return "I couldn't register the reminder with the system scheduler."
 
+    _record_reminder(task_name, target_dt, safe_msg, job_id)
+
     if player:
         player.write_log(f"[Reminder] ✅ {date_str} {time_str} — {safe_msg[:40]}")
 
@@ -340,10 +413,14 @@ def reminder(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "reminder",
-    "description": "Sets a timed reminder using Task Scheduler.",
+    "description": "Sets or lists persistent timed reminders. Reminders survive app restarts and use the OS scheduler so they remain registered across laptop restarts.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
+            "action": {
+                "type": "STRING",
+                "description": "set (default) | list"
+            },
             "date": {
                 "type": "STRING",
                 "description": "Date in YYYY-MM-DD format"
@@ -357,11 +434,7 @@ TOOL = {
                 "description": "Reminder message text"
             }
         },
-        "required": [
-            "date",
-            "time",
-            "message"
-        ]
+        "required": []
     },
     "handler": reminder,
 }
