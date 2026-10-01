@@ -68,6 +68,23 @@ def _notify(title: str, message: str) -> None:
     _run_applescript(f'display notification "{m}" with title "{t}"')
 
 
+def _queue_voice_alert(message: str) -> None:
+    state = _load(_STATE, {})
+    state["pending_voice_alert"] = str(message or "").strip()
+    state["pending_voice_alert_at"] = datetime.now().isoformat(timespec="seconds")
+    _save(_STATE, state)
+
+
+def consume_voice_alert() -> str:
+    state = _load(_STATE, {})
+    msg = str(state.get("pending_voice_alert", "") or "").strip()
+    if msg:
+        state["pending_voice_alert"] = ""
+        state["pending_voice_alert_at"] = ""
+        _save(_STATE, state)
+    return msg
+
+
 def _list_chrome_tabs() -> list[dict]:
     if platform.system() != "Darwin":
         return []
@@ -320,8 +337,10 @@ def check_once(notify: bool = True) -> dict:
                else "Visa portal needs CAPTCHA/security verification.")
         result = {"status": page_state, "message": msg}
         state = _load(_STATE, {})
-        if state.get("last_alert") != page_state and notify:
-            _notify("Usama Visa Monitor", msg)
+        if state.get("last_alert") != page_state:
+            if notify:
+                _notify("Usama Visa Monitor", msg)
+            _queue_voice_alert(msg)
         state["last_alert"] = page_state
         state["last_check"] = datetime.now().isoformat(timespec="seconds")
         _save(_STATE, state)
@@ -350,8 +369,10 @@ def check_once(notify: bool = True) -> dict:
         msg = f"Earlier US visa appointment found: {earliest.strftime('%d %B %Y')}. Book it quickly."
         result.update({"status": "earlier_slot", "message": msg})
         key = earliest.strftime("%Y-%m-%d")
-        if state.get("last_notified_slot") != key and notify:
-            _notify("US Visa Slot Available", msg)
+        if state.get("last_notified_slot") != key:
+            if notify:
+                _notify("US Visa Slot Available", msg)
+            _queue_voice_alert(msg)
             state["last_notified_slot"] = key
 
     if earliest:
