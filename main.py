@@ -90,7 +90,7 @@ from google.genai import types
 from ui import UsamaUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
-    save_session_summary, pop_last_session,
+    save_session_summary, pop_last_session, session_context_for_prompt,
     search_memory, set_trim_notifier,
 )
 
@@ -1010,8 +1010,9 @@ class UsamaLive:
             _user_name = ""
 
         memory     = load_memory()
-        mem_str    = format_memory_for_prompt(memory)
-        sys_prompt = _load_system_prompt()
+        mem_str     = format_memory_for_prompt(memory)
+        session_ctx = session_context_for_prompt()
+        sys_prompt  = _load_system_prompt()
 
         now      = datetime.now()
         time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
@@ -1063,6 +1064,8 @@ class UsamaLive:
         parts = [time_ctx, identity_ctx]
         if mem_str:
             parts.append(mem_str)
+        if session_ctx:
+            parts.append(session_ctx)
         parts.append(sys_prompt)
 
         cfg = dict(
@@ -1936,8 +1939,10 @@ class UsamaLive:
 
         convo = "\n".join(log[-40:])   # cap at last 40 turns to stay within token budget
         prompt = (
-            f"Summarize this conversation in 1-2 sentences in {lang}. "
-            "Focus on what the user accomplished or discussed. "
+            f"Create a compact durable restart summary in {lang}. "
+            "Preserve concrete decisions, completed changes, pending tasks, reminders, "
+            "named people/properties/projects, and important preferences. "
+            "Use 3-8 short bullet-like clauses; do not add anything that was not said. "
             "Output ONLY the summary text, nothing else:\n\n" + convo
         )
         try:
