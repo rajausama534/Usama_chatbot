@@ -62,16 +62,22 @@ def _get_api_key() -> str:
         return json.load(f)["gemini_api_key"]
 
 
-def _open_url(url: str) -> None:
+def _open_url(url: str) -> tuple[bool, str]:
+    """Open media in the user's existing Chrome window on macOS."""
     try:
         if is_mac():
-            subprocess.Popen(["open", url])
-        elif is_linux():
+            from actions.chrome_tabs import _open as open_chrome_tab
+            result = open_chrome_tab(url)
+            return result.startswith("Opened in Chrome:"), result
+        if is_linux():
             subprocess.Popen(["xdg-open", url])
         else:
             subprocess.Popen(["cmd", "/c", "start", "", url], shell=False)
-    except Exception as e:
-        print(f"[YouTube] ⚠️ open_url failed: {e}")
+        return True, "Opened in default browser."
+    except Exception as exc:
+        print(f"[YouTube] Could not open URL: {exc}")
+        return False, str(exc)
+
 
 def _scrape_first_video_url(query: str) -> str | None:
 
@@ -313,9 +319,11 @@ def _handle_play(parameters: dict, player) -> str:
             print(f"[YouTube] Date-sorted lookup unavailable: {e}")
 
     if not video_url:
-        video_url = _scrape_first_video_url(query)
+        video_url = query if _extract_video_id(query) and _is_valid_youtube_url(query) else _scrape_first_video_url(query)
     if video_url:
-        _open_url(video_url)
+        opened, detail = _open_url(video_url)
+        if not opened:
+            return f"Could not open YouTube video: {detail}. Playback has not started."
         return f"Opened YouTube video: {video_url}. Playback depends on browser autoplay settings."
 
     # A search page is a fallback, not successful playback.
@@ -324,7 +332,9 @@ def _handle_play(parameters: dict, player) -> str:
         f"?search_query={quote_plus(query)}"
         f"&sp={_YT_VIDEO_FILTER}"
     )
-    _open_url(fallback_url)
+    opened, detail = _open_url(fallback_url)
+    if not opened:
+        return f"Could not resolve or open a video: {detail}. Playback has not started."
     return f"Could not resolve a direct video. Opened YouTube results for: {query}; playback has not started."
 
 
