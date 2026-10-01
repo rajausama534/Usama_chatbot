@@ -118,6 +118,7 @@ from core.plugin_loader        import discover_plugins
 from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
+from core.elevenlabs_voice     import get_settings as get_elevenlabs_settings, synthesize_pcm
 from core                      import operator_state
 from memory.conversation_journal import record_turn, recent_context
 from actions.reminder import pending_reminders_for_prompt
@@ -599,6 +600,8 @@ class UsamaLive:
         # loop as words arrive, drained by the playback loop against the audio.
         self._visemes              = VisemeStream()
         self._last_out_logged      = ""      # de-dupes a re-sent transcript tail
+        self._elevenlabs_settings  = None  # opt-in voice
+        self._tts_task             = None
         # Push-to-talk
         self._ptt_enabled          = False
         self._ptt_held             = False
@@ -965,6 +968,8 @@ class UsamaLive:
     def interrupt(self) -> None:
         """Stop Usama mid-speech: drain queued audio and open mic immediately."""
         self._interrupted = True
+        if self._tts_task and not self._tts_task.done():
+            self._tts_task.cancel()
         q = self.audio_in_queue
         if q:
             drained = 0
@@ -1532,9 +1537,29 @@ class UsamaLive:
             self._vision_busy = False
         return True
 
+    async def _speak_elevenlabs(self, text: str, gemini_fallback: bytes) -> None:
+        """Render speech without blocking reception of Gemini messages."""
+        session = self.session
+        try:
+            pcm = await asyncio.to_thread(synthesize_pcm, text, self._elevenlabs_settings)
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            print(f"[Voice] ElevenLabs unavailable ({type(exc).__name__}); using Gemini.")
+            self.ui.write_log("SYS: Custom voice unavailable — using Gemini voice.")
+            self._elevenlabs_settings = None
+            pcm = gemini_fallback
+        if session is not self.session or not pcm:
+            return
+        for offset in range(0, len(pcm), 2400):
+            self.audio_in_queue.put_nowait(pcm[offset:offset + 2400])
+        if self._turn_done_event:
+            self._turn_done_event.set()
+
     async def _receive_audio(self):
         print("[Usama] 👂 Recv started")
         out_buf, in_buf = [], []
+        gemini_audio = bytearray()
 
         try:
             while True:
@@ -1562,9 +1587,12 @@ class UsamaLive:
                             # Split into ~50 ms chunks so interrupt() stops audio within 50 ms
                             # (24000 Hz × 2 bytes/sample × 0.05 s = 2400 bytes per slice)
                             _audio_data = response.data
-                            _SLICE = 2400
-                            for _i in range(0, len(_audio_data), _SLICE):
-                                self.audio_in_queue.put_nowait(_audio_data[_i : _i + _SLICE])
+                            if self._elevenlabs_settings:
+                                gemini_audio.extend(_audio_data)
+                            else:
+                                _SLICE = 2400
+                                for _i in range(0, len(_audio_data), _SLICE):
+                                    self.audio_in_queue.put_nowait(_audio_data[_i : _i + _SLICE])
 
                     if response.server_content:
                         sc = response.server_content
@@ -1603,6 +1631,7 @@ class UsamaLive:
                                 in_buf  = []
                                 out_buf = []
                                 self._visemes.reset()
+                                gemini_audio.clear()
                                 continue
 
                             full_in = " ".join(in_buf).strip()
@@ -1644,6 +1673,24 @@ class UsamaLive:
                                         "ts": datetime.now().isoformat(),
                                     }))
                             out_buf = []
+                            if self._elevenlabs_settings and gemini_audio:
+                                backup = bytes(gemini_audio)
+                                if full_out:
+                                    previous = self._tts_task
+                                    async def _deliver_voice(message=full_out, audio=backup, prior=previous):
+                                        if prior and not prior.done():
+                                            try:
+                                                await prior
+                                            except asyncio.CancelledError:
+                                                return
+                                        await self._speak_elevenlabs(message, audio)
+                                    self._tts_task = asyncio.create_task(_deliver_voice())
+                                else:
+                                    for pos in range(0, len(backup), 2400):
+                                        self.audio_in_queue.put_nowait(backup[pos:pos + 2400])
+                                    if self._turn_done_event:
+                                        self._turn_done_event.set()
+                            gemini_audio.clear()
 
                             if self._vision_close_pending:
                                 # This turn_complete IS the vision answer — close camera + release busy flag
@@ -2231,6 +2278,12 @@ class UsamaLive:
                     self._vision_busy          = False
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
+                    if self._tts_task and not self._tts_task.done():
+                        self._tts_task.cancel()
+                    self._tts_task = None
+                    self._elevenlabs_settings = get_elevenlabs_settings()
+                    if self._elevenlabs_settings:
+                        self.ui.write_log("SYS: Optional ElevenLabs voice enabled.")
                     # The previous live session may have died during playback.
                     # Clear its speaking flag before opening the new microphone;
                     # otherwise the mic callback silently discards every frame.
