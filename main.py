@@ -2332,6 +2332,20 @@ class UsamaLive:
                 print(f"[Usama] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
 
+                # 1011 is a Gemini Live server-side WebSocket failure, not an
+                # invalid API key. First remove preview-only configuration;
+                # if a minimal connection still fails, try the backup model.
+                if "1011" in err_str and "internal error" in err_str.lower():
+                    if self._tuned_live or self._enhanced_live:
+                        self._tuned_live = False
+                        self._enhanced_live = False
+                        self._resume_handle = None
+                        self._conn_backoff = 2
+                        self.ui.write_log(
+                            "SYS: Gemini Live error 1011 — retrying with basic settings."
+                        )
+                        continue
+
                 # Out of quota, or this model is not available to this key —
                 # step down the ladder and reconnect straight away. This is the
                 # difference between "Usama is quieter today" and "Usama does
@@ -2344,8 +2358,9 @@ class UsamaLive:
                         f"model is out of quota."
                         if nxt != live_model else
                         "SYS: Every live model is rate-limited — retrying.")
-                    self._conn_backoff = 0 if nxt != live_model else 15
+                    self._conn_backoff = 2 if nxt != live_model else 30
                     if nxt == live_model:
+                        self.ui.write_log("SYS: Gemini Live temporarily unavailable — retrying in 30s.")
                         await asyncio.sleep(self._conn_backoff)
                     continue
 
