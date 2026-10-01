@@ -2276,7 +2276,7 @@ class UsamaLive:
                         await self.session.send_client_content(
                             turns={"role": "user", "parts": [{"text": (
                                 "[STARTUP_GREETING] Say exactly one short greeting only. "
-                                "Use either 'Hello Mr. Usama.' or 'Hello bhai, I am Usama.' "
+                                "Say exactly: 'Hi, my name is Osama.' "
                                 "Do not mention news, weather, headlines, updates, reminders, "
                                 "system status, or anything else."
                             )}]},
