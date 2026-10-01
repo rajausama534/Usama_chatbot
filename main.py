@@ -106,6 +106,7 @@ from actions.proactive         import ProactiveEngine
 from actions.background_monitor import (
     add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
 )
+from actions.visa_monitor import consume_voice_alert
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -2010,6 +2011,34 @@ class UsamaLive:
                         print(f"[Monitor] ⚠️ Background check error: {e}")
             await asyncio.sleep(1800)     # check every 30 minutes
 
+
+
+    async def _run_visa_voice_alerts(self) -> None:
+        """Deliver queued visa-monitor alerts once Usama has a safe speaking gap."""
+        while True:
+            await asyncio.sleep(15)
+            if not self.session or not self._awake:
+                continue
+            with self._speaking_lock:
+                speaking = self._is_speaking
+            if speaking or (time.monotonic() - self._last_user_speech) < 3:
+                continue
+            try:
+                msg = await asyncio.to_thread(consume_voice_alert)
+                if not msg:
+                    continue
+                await self.session.send_client_content(
+                    turns={"role": "user", "parts": [{"text": (
+                        "[VISA_MONITOR_ALERT] " + msg + " "
+                        "Tell the user immediately and concisely in their current language. "
+                        "Do not call tools and do not add extra commentary."
+                    )}]},
+                    turn_complete=True,
+                )
+                print("[Usama] Visa monitor voice alert sent.")
+            except Exception as e:
+                print(f"[VisaMonitor] Voice alert error: {e}")
+
     # ── Proactive mode ──────────────────────────────────────────────────────────
 
     async def _run_proactive_mode(self) -> None:
@@ -2217,6 +2246,7 @@ class UsamaLive:
                     tg.create_task(self._play_audio())
                     tg.create_task(self._run_system_monitor())
                     tg.create_task(self._run_background_monitor())
+                    tg.create_task(self._run_visa_voice_alerts())
                     tg.create_task(self._run_proactive_mode())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:
