@@ -566,6 +566,24 @@ def _is_reconnect_signal(exc: BaseException) -> bool:
     return False
 
 
+def _nested_error_text(exc: BaseException) -> str:
+    """Include TaskGroup child errors; str(ExceptionGroup) hides Gemini's 1011."""
+    messages = []
+    seen = set()
+    def collect(error, depth=0):
+        if error is None or depth > 8 or id(error) in seen:
+            return
+        seen.add(id(error))
+        messages.append(f"{type(error).__name__}: {error}")
+        if isinstance(error, BaseExceptionGroup):
+            for child in error.exceptions:
+                collect(child, depth + 1)
+        else:
+            collect(getattr(error, "__cause__", None), depth + 1)
+    collect(exc)
+    return " | ".join(messages)
+
+
 def _keep_context_of(exc: BaseException) -> bool:
     """Read `keep_context` off a reconnect signal, unwrapping the group the
     TaskGroup put it in. Defaults to True: an unexpected shape must not silently
@@ -1621,7 +1639,7 @@ class UsamaLive:
                                 self._last_user_speech = time.monotonic()
 
                         if sc.turn_complete:
-                            if self._turn_done_event:
+                            if self._turn_done_event and not self._elevenlabs_settings:
                                 self._turn_done_event.set()
 
                             # If this turn_complete ends an interrupted response, clear the
@@ -2240,6 +2258,8 @@ class UsamaLive:
             self._dashboard = None
 
         while True:
+            _resumed_with = False
+            live_model = _gemini.live_model()
             try:
                 print("[Usama] Connecting...")
                 self.ui.set_state("THINKING")
@@ -2370,10 +2390,10 @@ class UsamaLive:
                 # survive a reconnect would be the thing preventing one. Drop it
                 # once and let the next attempt start clean.
                 if _resumed_with and (
-                    "resum" in str(e).lower()
-                    or "handle" in str(e).lower()
-                    or "INVALID_ARGUMENT" in str(e)
-                    or "NOT_FOUND" in str(e)
+                    "resum" in _nested_error_text(e).lower()
+                    or "handle" in _nested_error_text(e).lower()
+                    or "INVALID_ARGUMENT" in _nested_error_text(e)
+                    or "NOT_FOUND" in _nested_error_text(e)
                 ):
                     print("[Usama] 🔗 Resumption handle rejected — starting a fresh session")
                     self.ui.write_log("SYS: Live session expired — reconnecting with saved local conversation history.")
@@ -2381,7 +2401,7 @@ class UsamaLive:
                     self._conn_backoff = 1
                     continue
 
-                err_str = str(e)
+                err_str = _nested_error_text(e)
                 print(f"[Usama] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
 
@@ -2406,14 +2426,19 @@ class UsamaLive:
                 # limit always arrives mid-conversation.
                 if _gemini.note_live_failure(live_model, err_str):
                     nxt = _gemini.live_model()
+                    self._resume_handle = None if nxt != live_model else self._resume_handle
+                    failure_label = (
+                        "internal server error" if "1011" in err_str else
+                        "quota or availability"
+                    )
                     self.ui.write_log(
-                        f"SYS: Switching to {nxt.split('/')[-1]} — the previous "
-                        f"model is out of quota."
+                        f"SYS: Switching to {nxt.split('/')[-1]} after {failure_label}."
                         if nxt != live_model else
-                        "SYS: Every live model is rate-limited — retrying.")
+                        "SYS: Gemini Live models temporarily unavailable — retrying."
+                    )
                     self._conn_backoff = 2 if nxt != live_model else 30
                     if nxt == live_model:
-                        self.ui.write_log("SYS: Gemini Live temporarily unavailable — retrying in 30s.")
+                        self.ui.write_log("SYS: Gemini Live temporarily unavailable — retrying shortly.")
                         await asyncio.sleep(self._conn_backoff)
                     continue
 
