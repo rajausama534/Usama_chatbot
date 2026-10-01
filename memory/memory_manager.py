@@ -55,21 +55,26 @@ def _empty_memory() -> dict:
     }
 
 def load_memory() -> dict:
-    if not MEMORY_PATH.exists():
-        return _empty_memory()
+    backup_path = MEMORY_PATH.with_suffix(".json.bak")
     with _lock:
-        try:
-            data = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
+        for candidate in (MEMORY_PATH, backup_path):
+            if not candidate.exists():
+                continue
+            try:
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("Memory file must contain a JSON object")
                 base = _empty_memory()
                 for key in base:
-                    if key not in data:
+                    if not isinstance(data.get(key), dict):
                         data[key] = {}
+                if candidate == backup_path:
+                    print("[Memory] Primary memory unavailable; recovered from backup.")
                 return data
-            return _empty_memory()
-        except Exception as e:
-            print(f"[Memory] ⚠️ Load error: {e}")
-            return _empty_memory()
+            except Exception as e:
+                print(f"[Memory] Load error in {candidate.name}: {e}")
+    return _empty_memory()
+
 
 def _all_entries(memory: dict) -> list[tuple]:
     entries = []
