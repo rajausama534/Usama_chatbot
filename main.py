@@ -120,6 +120,7 @@ from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core                      import operator_state
 from memory.conversation_journal import record_turn, recent_context
+from actions.reminder import pending_reminders_for_prompt
 from core.action_loader        import discover_actions
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
@@ -1015,6 +1016,7 @@ class UsamaLive:
         mem_str     = format_memory_for_prompt(memory)
         session_ctx = session_context_for_prompt()
         turn_ctx    = recent_context()
+        task_ctx    = pending_reminders_for_prompt()
         sys_prompt  = _load_system_prompt()
 
         now      = datetime.now()
@@ -1071,6 +1073,8 @@ class UsamaLive:
             parts.append(session_ctx)
         if turn_ctx:
             parts.append(turn_ctx)
+        if task_ctx:
+            parts.append(task_ctx)
         parts.append(sys_prompt)
 
         cfg = dict(
