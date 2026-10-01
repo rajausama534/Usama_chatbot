@@ -2231,6 +2231,12 @@ class UsamaLive:
                     self._vision_busy          = False
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
+                    # The previous live session may have died during playback.
+                    # Clear its speaking flag before opening the new microphone;
+                    # otherwise the mic callback silently discards every frame.
+                    with self._speaking_lock:
+                        self._is_speaking = False
+                    self._tail_until = 0.0
 
                     print("[Usama] Connected.")
                     if _resumed_with:
