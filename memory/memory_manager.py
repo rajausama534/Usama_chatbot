@@ -425,55 +425,60 @@ forget_memory = forget
 
 # ── Session memory ─────────────────────────────────────────────────────────────
 
-_SESSION_MAX = 3   # safety cap — in practice 0-1 entries after pop
+_SESSION_MAX = 20
+_SESSION_SUMMARY_MAX = 2000
+_SESSION_PROMPT_MAX = 5
 
 
 def save_session_summary(summary: str, language: str = "") -> None:
-    """Append a 1-2 sentence session summary to long_term.json['sessions']."""
+    """Append a durable session summary to long_term.json['sessions'].""" 
     summary = (summary or "").strip()
     if not summary:
         return
-    memory   = load_memory()
+    memory = load_memory()
     sessions = memory.get("sessions", [])
     if not isinstance(sessions, list):
         sessions = []
     entry: dict = {
-        "date":    datetime.now().strftime("%Y-%m-%d"),
-        "summary": summary[:280],
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "summary": summary[:_SESSION_SUMMARY_MAX],
     }
     if language:
         entry["language"] = language
     sessions.append(entry)
     memory["sessions"] = sessions[-_SESSION_MAX:]
-    with _lock:
-        MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        MEMORY_PATH.write_text(
-            json.dumps(memory, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    print(f"[Memory] 📝 Session saved ({entry['date']}): {summary[:60]}…")
+    save_memory(memory)
+    print(f"[Memory] Session saved ({entry['date']}): {summary[:60]}...")
+
+
+def recent_sessions(limit: int = _SESSION_PROMPT_MAX) -> list[dict]:
+    """Return recent durable summaries without consuming them."""
+    memory = load_memory()
+    sessions = memory.get("sessions", [])
+    if not isinstance(sessions, list):
+        return []
+    rows = [s for s in sessions if isinstance(s, dict) and str(s.get("summary", "")).strip()]
+    return rows[-max(1, int(limit or _SESSION_PROMPT_MAX)):]
+
+
+def session_context_for_prompt(limit: int = _SESSION_PROMPT_MAX) -> str:
+    """Compact cross-restart context injected into each fresh live session."""
+    rows = recent_sessions(limit)
+    if not rows:
+        return ""
+    out = ["[RECENT SESSION CONTEXT — durable across app/laptop restarts]"]
+    for row in rows:
+        when = str(row.get("date", "")).strip() or "previous session"
+        summary = " ".join(str(row.get("summary", "")).split())
+        if summary:
+            out.append(f"- {when}: {summary}")
+    return "\n".join(out) + "\n"
 
 
 def pop_last_session() -> dict | None:
     """
-    Return AND remove the most recent session entry.
-    Calling this consumes the entry so it is never repeated in future briefings.
+    Backward-compatible non-destructive read of the latest session.
+    Older builds consumed this entry at startup, causing apparent forgetting.
     """
-    with _lock:
-        if not MEMORY_PATH.exists():
-            return None
-        try:
-            memory   = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
-            sessions = memory.get("sessions", [])
-            if not isinstance(sessions, list) or not sessions:
-                return None
-            entry = sessions.pop()          # remove the last entry
-            memory["sessions"] = sessions
-            MEMORY_PATH.write_text(
-                json.dumps(memory, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            return entry
-        except Exception as e:
-            print(f"[Memory] ⚠️ pop_last_session error: {e}")
-            return None
+    rows = recent_sessions(1)
+    return rows[-1] if rows else None
