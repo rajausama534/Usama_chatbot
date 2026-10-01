@@ -273,6 +273,11 @@ def note_live_failure(model: str, err: str) -> bool:
     dropped network is not the model's fault, and stepping down the ladder for
     those would work through every model and reach the same wall four times.
     """
+    if "1011" in err and ("internal error" in err.lower() or "internal server" in err.lower()):
+        _cool(model, 180)
+        print(f"[Gemini] Live model {model} returned server error 1011; "
+              "trying the backup after a short cooldown.")
+        return True
     if is_quota_error(err):
         _cool(model, _COOLDOWN_SECONDS)
         print(f"[Gemini] Live model {model} is out of quota — "
