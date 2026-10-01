@@ -2395,7 +2395,9 @@ class UsamaLive:
                     continue
 
                 # Invalid API key — stop hammering the API, prompt re-configuration
-                if "API key not valid" in err_str or "1007" in err_str:
+                if ("API key not valid" in err_str
+                        or "API_KEY_INVALID" in err_str
+                        or "UNAUTHENTICATED" in err_str):
                     self.ui.write_log("ERR: API key invalid — please re-enter your key.")
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
@@ -2404,6 +2406,23 @@ class UsamaLive:
                     print("[Usama] New API key saved — reconnecting...")
                     _conn_backoff = 3
                     continue
+
+                # WebSocket 1007 can also mean invalid Live audio/configuration.
+                # It is not evidence that the API key is wrong. Retry once with
+                # minimal options and a fresh session before falling back.
+                if "1007" in err_str:
+                    if self._tuned_live or self._enhanced_live:
+                        self._tuned_live = False
+                        self._enhanced_live = False
+                        self._resume_handle = None
+                        self._conn_backoff = 2
+                        self.ui.write_log("SYS: Live protocol error — retrying with basic audio settings.")
+                        continue
+                    if _gemini.note_live_failure(live_model, "503 unavailable"):
+                        self._resume_handle = None
+                        self._conn_backoff = 3
+                        self.ui.write_log("SYS: Live protocol error — trying backup voice model.")
+                        continue
 
                 # Network / timeout errors — log clearly and back off
                 is_net_err = any(k in err_str for k in (
