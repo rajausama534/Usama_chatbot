@@ -4,6 +4,10 @@ from unittest.mock import patch
 from core import crm_client
 
 class CRMReadTests(unittest.TestCase):
+    def test_correct_crm_website_is_vercel(self):
+        self.assertEqual(crm_client.CRM_WEBSITE_URL,
+                         "https://usama-crm.vercel.app/")
+
     def test_existing_project_pinned(self):
         self.assertEqual(crm_client.CRM_URL,
                          "https://vnydxkmhrcesdffpfjpc.supabase.co")
