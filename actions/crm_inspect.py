@@ -42,13 +42,23 @@ def crm_inspect(parameters):
         if "error" in result:
             return json.dumps(result, ensure_ascii=False)
         rows = result.get("records", [])
-        return json.dumps({
+        payload = {
             "website": crm_client.CRM_WEBSITE_URL,
             "read_only": True,
             "lead": rows[0] if rows else None,
             "message": "Lead details retrieved from existing CRM; no UI click or mutation performed."
                        if rows else "Lead not accessible or not found."
-        }, ensure_ascii=False, default=str)[:18000]
+        }
+        output = json.dumps(payload, ensure_ascii=False, default=str)
+        if len(output) > 18000:
+            return json.dumps({
+                "read_only": True,
+                "message": "Lead found, but the full record exceeds the safe response size. "
+                           "Inspect this lead directly in the existing CRM.",
+                "lead_id": (rows[0] or {}).get("id") if rows else None,
+                "website": crm_client.CRM_WEBSITE_URL,
+            }, ensure_ascii=False, default=str)
+        return output
     except (ValueError, KeyError, RuntimeError) as exc:
         return "CRM inspection unavailable: " + str(exc)
 
