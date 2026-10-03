@@ -35,6 +35,23 @@ class CRMReadTests(unittest.TestCase):
         self.assertEqual(params["limit"], "50")
         self.assertIn("follow_up_date", params["and"])
 
+    def test_expired_access_token_is_refreshed_only_for_read(self):
+        class Reply:
+            def __init__(self, code, rows=None):
+                self.status_code = code
+                self._rows = rows or []
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return self._rows
+        first, second = Reply(401), Reply(200, [{"id": "sample"}])
+        with patch.object(crm_client, "_jwt", side_effect=["old", "new"]) as jwt, \
+             patch.object(crm_client.requests, "get", side_effect=[first, second]) as get:
+            result = crm_client._get("leads", {"select": "id", "limit": "1"})
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(jwt.call_count, 2)
+
     def test_short_search_not_sent(self):
         with patch.object(crm_client, "_get") as get:
             with self.assertRaises(ValueError):
