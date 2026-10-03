@@ -132,7 +132,11 @@ end tell
 
 
 class _MacWhatsApp:
+    def __init__(self):
+        self._prepared = None
+
     def prepare_message_to(self, receiver: str, message: str):
+        self._prepared = None
         if platform.system() != "Darwin":
             return False, "macOS WhatsApp driver is only available on macOS"
         if pyautogui is None:
@@ -201,18 +205,29 @@ class _MacWhatsApp:
 
         if "whatsapp" not in _front_app().lower():
             return False, "WhatsApp lost focus while preparing the message"
+        self._prepared = (receiver, message)
         return True, ""
 
     def send_prepared(self):
+        prepared = self._prepared
+        self._prepared = None
+        if not prepared:
+            return False, "No verified WhatsApp draft is pending. Prepare the message again."
+        receiver, _message = prepared
         if platform.system() != "Darwin" or pyautogui is None:
             return False, "WhatsApp send control is unavailable"
         if "whatsapp" not in _front_app().lower():
-            return False, "WhatsApp is not the active application"
-        pyautogui.press("enter")
-        time.sleep(0.5)
-        if "whatsapp" not in _front_app().lower():
-            return False, "WhatsApp lost focus while sending"
-        return True, ""
+            return False, "WhatsApp is not active. Nothing was sent."
+        if not _contact_visible_exact(receiver):
+            return False, f"Active WhatsApp chat could not be reverified as '{receiver}'. Nothing was sent."
+        try:
+            pyautogui.press("enter")
+        except Exception as exc:
+            return False, f"Send outcome uncertain ({type(exc).__name__}). Check the chat; never auto-retry."
+        return False, (
+            f"Send key pressed for '{receiver}', but sending and delivery are unverified. "
+            "Check the conversation before retrying; do not send automatically."
+        )
 
     def send_message_to(self, receiver: str, message: str):
         ok, why = self.prepare_message_to(receiver, message)
