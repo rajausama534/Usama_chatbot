@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 import requests
 
+# Website is the CRM interface; this Supabase URL is its authenticated data API.
+CRM_WEBSITE_URL = "https://usama-crm.vercel.app/"
 CRM_URL = "https://vnydxkmhrcesdffpfjpc.supabase.co"
 PUBLISHABLE_KEY = "sb_publishable_VP8ZvA5up64JFGkn5_7qbg_NYVJvt-I"
 SERVICE = "usama-crm-supabase-refresh"
