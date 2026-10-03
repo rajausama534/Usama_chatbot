@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "whatsapp": {
+      "command": "REPLACE_WITH_VETTED_WHATSAPP_SERVER_COMMAND",
+      "args": []
+    },
+    "gmail": {
+      "command": "REPLACE_WITH_GMAIL_MCP_COMMAND",
+      "args": []
+    },
+    "calendar": {
+      "command": "REPLACE_WITH_CALENDAR_MCP_COMMAND",
+      "args": []
+    },
+    "contacts": {
+      "command": "REPLACE_WITH_CONTACTS_MCP_COMMAND",
+      "args": []
+    },
+    "supabase": {
+      "command": "REPLACE_WITH_SUPABASE_MCP_COMMAND",
+      "args": []
+    },
+    "shopify": {
+      "command": "REPLACE_WITH_SHOPIFY_MCP_COMMAND",
+      "args": []
+    }
+  }
+}
