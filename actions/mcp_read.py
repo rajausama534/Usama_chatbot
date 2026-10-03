@@ -41,6 +41,18 @@ async def _invoke(server, tool, arguments):
             available = await session.list_tools()
             if tool not in {item.name for item in available.tools}:
                 raise ValueError("Tool is not advertised by the configured MCP server")
+            selected = next(t for t in available.tools if t.name == tool)
+            annotations = getattr(selected, "annotations", None)
+            if annotations is not None and getattr(annotations, "readOnlyHint", None) is False:
+                return "Refused: MCP server marks this tool as not read-only."
+            # The user must review and allowlist genuinely read-only tools;
+            # deny common mutation verbs even when an untrusted server mislabels one.
+            prohibited = ("send", "delete", "remove", "update", "write", "create",
+                          "post", "publish", "trade", "execute", "insert", "upsert",
+                          "refund", "fulfill", "cancel", "book", "schedule", "transfer")
+            words = set(__import__("re").split(r"[^a-z0-9]+", tool.lower()))
+            if words.intersection(prohibited):
+                return "Refused: this operation may change external data."
             result = await session.call_tool(tool, arguments)
             if result.isError:
                 return "MCP tool reported an error."
@@ -70,7 +82,8 @@ def mcp_read(parameters):
     if f"{server}:{tool}" not in _read_allowlist():
         return "MCP operation not authorized. Configure a reviewed read-only tool in USAMA_MCP_READ_ALLOWLIST."
     try:
-        args = parameters.get("arguments", {})
+        raw = parameters.get("arguments_json", "")
+        args = json.loads(raw) if raw else parameters.get("arguments", {})
         if not isinstance(args, dict):
             return "MCP arguments must be a JSON object."
         if server not in _servers():
@@ -90,6 +103,7 @@ TOOL = {
         "properties": {
             "server": {"type": "STRING"},
             "tool": {"type": "STRING"},
+            "arguments_json": {"type": "STRING", "description": "Optional JSON object containing the exact arguments of the discovered read-only tool"},
             "arguments": {"type": "OBJECT", "properties": {}}
         },
         "required": ["server", "tool"]
