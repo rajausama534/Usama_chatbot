@@ -29,8 +29,7 @@ def _keychain():
 
 def _headers(jwt=None):
     headers = {"apikey": PUBLISHABLE_KEY, "Accept": "application/json"}
-    if jwt:
-        headers["Authorization"] = "Bearer " + jwt
+    headers["Authorization"] = "Bearer " + (jwt or PUBLISHABLE_KEY)
     return headers
 
 def _check_host():
@@ -104,6 +103,15 @@ def _get(table, query):
             headers=_headers(_jwt()),
             params=query, timeout=18,
         )
+        if response.status_code == 401:
+            # Access tokens expire. Try rotating the refresh token once; never
+            # retry writes (this client exposes GET only).
+            global _ACCESS
+            _ACCESS = None
+            response = requests.get(
+                CRM_URL + "/rest/v1/" + table,
+                headers=_headers(_jwt()), params=query, timeout=18,
+            )
         if response.status_code in (401, 403):
             return {"error": "CRM session or row-level permissions do not allow this read."}
         response.raise_for_status()
