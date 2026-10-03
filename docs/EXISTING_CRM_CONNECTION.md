@@ -1,4 +1,4 @@
-# Connect your EXISTING Vercel + Supabase CRM to Usama
+# Connect your EXISTING CRM website to Usama\n\n**Correct CRM website:** https://usama-crm.vercel.app/ — this is the browser URL.\n\n**Data API:** https://vnydxkmhrcesdffpfjpc.supabase.co — this is the Supabase backend used by the existing CRM code, not a CRM website. Never replace the backend URL with the Vercel domain: authentication and REST requests require the Supabase API. Usama includes an `open_crm` action that opens the correct Vercel website.
 
 Verified source: `rajausama534/usama-crm` (existing GitHub CRM frontend) points to `https://vnydxkmhrcesdffpfjpc.supabase.co`. This is **not** the inactive Supabase project currently visible to the separate ChatGPT Supabase connector. No database schema, records, Vercel deployment or CRM frontend were changed.
 
