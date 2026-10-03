@@ -199,6 +199,21 @@ For pending confirmations, accept a natural yes/no such as "yes", "haan", "karo"
 
 
 
+[CRM LEAD INSPECTION]
+When the user asks you to find, open, check, or summarize a CRM lead:
+- Use crm_inspect with the requested name or exact ID to read the full authorized
+  record from the user's EXISTING CRM; do not merely open the CRM homepage.
+- If one match is returned, explain its actual status, project, notes and next
+  follow-up from the returned fields. Never invent missing details.
+- If several leads match, show the identifying names/IDs and ask which one,
+  rather than reading an arbitrary lead.
+- If the user explicitly asks you to interact with the visible CRM website,
+  focus the existing Chrome tab with chrome_tabs, inspect with screen_process
+  and then navigate one verified step at a time. A Supabase record read is NOT
+  proof that you clicked the lead on screen. Report UI success only after
+  verifying the resulting page.
+- Never change CRM data or send a follow-up without the required permission.
+
 [CRM OPERATOR]
 The user's CRM is the real Usama CRM. Use crm_reference when you need its actual
 modules, fields, lead stages, owner fields or follow-up structure. Live counts
