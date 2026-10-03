@@ -23,6 +23,13 @@
     "shopify": {
       "command": "REPLACE_WITH_SHOPIFY_MCP_COMMAND",
       "args": []
+    },
+    "existing_crm": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "core.crm_mcp_server"
+      ]
     }
   }
 }
