@@ -317,7 +317,9 @@ def send_message(
             def _do_send():
                 sent, failure2 = transport.send_prepared()
                 if sent:
-                    return f"Message sent to {receiver} via WhatsApp."
+                    return f"WhatsApp accepted the send command for {receiver}; delivery is not verified."
+                if "unverified" in failure2.lower() or "uncertain" in failure2.lower():
+                    return failure2
                 return f"Message to {receiver} was NOT sent: {failure2}"
 
             if authorized:
