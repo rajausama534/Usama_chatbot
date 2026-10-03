@@ -21,3 +21,9 @@ For each installed server, inspect its advertised tools, verify the account, and
 Use the **existing Supabase project** behind the Vercel CRM. First review its schema, access policies and ownership fields; use least-privilege credentials. Do not create a new CRM or alter production tables on the strength of this bridge. Automated follow-ups, reminders and meeting booking require separate, explicitly approved write operations, scheduling, deduplication, per-contact permission checks and end-to-end tests. Outbound WhatsApp/Gmail must check the exact recipient and message; uncertain send results must not trigger a blind retry. Shopify product/order edits likewise require separate scoped write actions. This preparation does **not** claim those actions or live connections are complete.
 
 Gemini voice and ElevenLabs are independent of MCP setup. No voice-provider switch is made by these changes.
+
+## Updated bridge verification
+
+The local MCP configuration is ignored by Git (.gitignore now excludes `config/mcp_servers.json`). After installing the SDK and authenticating a reviewed **stdio** server, ask Usama to call `mcp_discover` with that server name to see the actual advertised tools. Then explicitly allowlist only reviewed read operations; `mcp_read` accepts `arguments_json` for tool-specific structured arguments. The bridge refuses tools explicitly marked non-read-only and blocks common mutating operation names. Do not treat this as a guarantee for maliciously mislabeled third-party servers: choose a trusted provider and read-only credentials.
+
+Run offline regressions with `python3 -m unittest discover -s tests`. These tests do not authenticate or verify live provider functionality. The Supabase project currently visible through the connected account is INACTIVE, so first identify the actual production CRM project in your own Supabase dashboard before enabling CRM access. We have not restored or changed any database.
