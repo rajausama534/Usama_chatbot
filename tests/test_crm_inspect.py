@@ -25,6 +25,14 @@ class CRMInspectTests(unittest.TestCase):
         get.assert_not_called()
 
     @patch("actions.crm_inspect.crm_client._get")
+    def test_large_record_does_not_return_broken_json(self, get):
+        get.return_value = {"records": [{"id": "abc-123", "notes": "x" * 20000}]}
+        reply = json.loads(crm_inspect({"lead_id": "abc-123"}))
+        self.assertTrue(reply["read_only"])
+        self.assertEqual(reply["lead_id"], "abc-123")
+        self.assertNotIn("lead", reply)
+
+    @patch("actions.crm_inspect.crm_client._get")
     def test_invalid_id_never_queries_database(self, get):
         self.assertIn("Invalid lead identifier", crm_inspect({"lead_id": "abc;delete"}))
         get.assert_not_called()
